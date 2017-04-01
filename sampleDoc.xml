@@ -573,6 +573,8 @@
     </arr>
     <arr name="tag">
       <str>Negligence</str>
+      <str>Test1</str>
+      <str>Test2</str>
     </arr>
     <str name="domain">singaporelaw.sg</str>
     <bool name="show">true</bool>
