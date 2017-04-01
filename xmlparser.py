@@ -33,20 +33,20 @@ from xml.dom import minidom
 
 class XMLParser:
       
-    # Member vars
-    xmlDocObject = {}
-    strNodeList = []
-    arrNodeList = []
+    # # Member vars
+    # xmlDocObject = {}
+    # strNodeList = []
+    # arrNodeList = []
 
-    # Zones
-    contentStr = ""
-    titleStr = ""
-    sourceStr = ""
-    contentType = ""
-    court = ""
-    domain = ""
-    jurisdictionArr = []
-    tagArr = []
+    # # Zones
+    # contentStr = ""
+    # titleStr = ""
+    # sourceStr = ""
+    # contentType = ""
+    # court = ""
+    # domain = ""
+    # jurisdictionArr = []
+    # tagArr = []
 
     def __init__(self):
         self.contentStr = ""
@@ -57,6 +57,8 @@ class XMLParser:
         self.domain = ""
         self.jurisdictionArr = []
         self.tagArr = []
+        self.areaOfLawArr = []
+        self.date = ""
 
     def reset(self):
         self.contentStr = ""
@@ -67,12 +69,15 @@ class XMLParser:
         self.domain = ""
         self.jurisdictionArr = []
         self.tagArr = []
+        self.areaOfLawArr = []
+        self.date = ""
 
     def parseDoc(self, filename):
         self.reset()
         self.xmlDocObject = minidom.parse(filename)
         self.strNodeList = self.xmlDocObject.getElementsByTagName('str')
         self.arrNodeList = self.xmlDocObject.getElementsByTagName('arr')
+        dateArr = self.xmlDocObject.getElementsByTagName('date')
 
         # Fill in string nodes' zone
         for strNode in self.strNodeList:
@@ -99,6 +104,16 @@ class XMLParser:
                     self.jurisdictionArr = self.getArray(arrNode.getElementsByTagName('str'))
                 elif namedNode.value == "tag":
                     self.tagArr = self.getArray(arrNode.getElementsByTagName('str'))
+                elif namedNode.value == "areaoflaw":
+                    self.areaOfLawArr = self.getArray(arrNode.getElementsByTagName('str'))
+
+        for dateNode in dateArr:
+            if self.nodeHasNameTag(dateNode):
+                namedNode = dateNode.attributes["name"]
+                if namedNode.value == "date_posted":
+                    self.date = self.getText(dateNode.childNodes)
+                if namedNode.value == "date_modified":
+                    self.date = self.getText(dateNode.childNodes)
 
         print "parsing complete"
 

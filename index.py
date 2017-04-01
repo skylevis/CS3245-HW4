@@ -8,7 +8,7 @@ from nltk.stem.porter import PorterStemmer
 import sys
 import getopt
 import math
-from xml.dom import minidom
+from xmlparser import XMLParser
 try:
    import cPickle as pickle
 except:
@@ -16,15 +16,15 @@ except:
 
 
 TUPLE_DOC_ID = 0
-TUPLE_TERM_FREQ = 1
+TUPLE_POS_ARR = 1
 
 pointerDict = {} # stores the byte pointers for each term's posting array in the collection
 postingDict = {} # stores posting array for each term in collection
-docFreqDict = {} # stores freq of each term in collection
-docLengthDict = {} # stores the raw length of each document in the collection
-totalNumOfDocs = 0
+docDict = {} # stores the raw length of each document in the collection
 currentDocId = 0
-numberOfDocumentsToRead = 10
+numberOfDocumentsToRead = 2
+
+xmlparser = XMLParser()
 
 # Remove punctuations
 # tokenize according to words
@@ -34,7 +34,7 @@ numberOfDocumentsToRead = 10
 def readFilesInDirectory(directory):
     global currentDocId
     global totalNumOfDocs
-    global docLengthDict
+    global docDict
 
     listOfDir = os.listdir(directory)
     totalNumOfDocs = len(listOfDir)
@@ -49,16 +49,15 @@ def readFilesInDirectory(directory):
         currentDocId = int(filename)
 
         # Create new entry for docLengthDict
-        docLengthDict[currentDocId] = 0
+        docDict[currentDocId] = 0
 
         # Index the file
-        indexFile(file)
+        indexDoc(file)
 
 # Current Main Method, for testing purposes, only index small portion of library
 def readSomeFilesInDirectory(directory):
     global currentDocId
-    global totalNumOfDocs
-    global docLengthDict
+    global docDict
 
     totalNumOfDocs = numberOfDocumentsToRead
     filenameArray = os.listdir(directory)
@@ -70,16 +69,15 @@ def readSomeFilesInDirectory(directory):
         file = os.path.join(directory, filename)
 
         # Update currentFilename for reference later
-        currentDocId = int(filename)
+        currentDocId = int(filename.split('.')[0])
 
         # Create new entry for docLengthDict
-        docLengthDict[currentDocId] = 0
+        docDict[currentDocId] = 0
 
-        indexFile(file) 
-
+        indexDoc(file) 
     
-    for doc, length in docLengthDict.iteritems():
-        print(doc, length)
+    # for doc, length in docDict.iteritems():
+    # print(doc, length)
     
 
 def stem_tokens(tokens, stemmer):
@@ -114,21 +112,55 @@ def combine_contracted(words):
     return combinedWords 
 
 
-def indexFile(file):
-    global docLengthDict
+def indexDoc(file):
+    global xmlparser
+    global docDict
 
-    fileString = ""
+    # Parse document using xmlparser
+    xmlparser.parseDoc(file)
 
+    # --- Index Contents ---
+    indexZone("content", xmlparser.contentStr)
+
+    # --- Index other zones ---
+    indexZone("title", xmlparser.titleStr)
+    indexZone("source_type", xmlparser.sourceStr)
+    indexZone("content_type", xmlparser.contentType)
+    indexZone("court", xmlparser.court)
+    indexZone("domain", xmlparser.domain)
+
+    # --- Store document properties ---
+    if currentDocId not in docDict:
+        docDict[currentDocId] = {
+                                "length" : 0,
+                                "jurisdiction": xmlparser.jurisdictionArr,
+                                "tag": xmlparser.tagArr,
+                                "areaoflaw": xmlparser.areaOfLawArr,
+                                "date": xmlparser.date
+                                }
+    else:
+        docDict[currentDocId].update({
+                                "jurisdiction": xmlparser.jurisdictionArr,
+                                "tag": xmlparser.tagArr,
+                                "areaoflaw": xmlparser.areaOfLawArr,
+                                "date": xmlparser.date
+                                })
+
+    print "indexed", currentDocId
+
+def indexZone(zone, zoneString):
+    global docDict
+
+    # Setup stemmer
     stemmer = PorterStemmer()
 
-    # Open File and read into a single string
-    with open(file) as f:
-        fileString = f.read().replace('\n', '')
-        fileString = re.sub(ur"[^\w\d'\s\-]+", '', fileString) # Remove punctuations except aprostrophe and hyphens
-        fileString.replace('/', ' ')
+    # Convert into a single string
+    zoneString.replace('\n', '')
+    zoneString = re.sub(ur"[^\w\d'\s\-]+", '', zoneString)
+    zoneString.replace('/', ' ')
         
     # Tokenize string into array of words
-    words = word_tokenize(fileString)
+    words = word_tokenize(zoneString)
 
     # Combine contracted words if any
     words = combine_contracted(words)
@@ -142,57 +174,44 @@ def indexFile(file):
         caseFoldedArray.append(word.lower())
 
     # Index each word
+    pos = 0
     for word in caseFoldedArray:
-        indexWord(word)
+        indexWord(word, zone, pos)
+        pos += 1
 
-    # Store doc raw length
-    docLengthDict[currentDocId] = len(caseFoldedArray)
+    if zone == "content":
+        # Store doc raw length
+        docDict[currentDocId] = {"length": len(caseFoldedArray)}
 
-
-def indexWord(word):
+def indexWord(word, zone, pos):
     global postingDict
-    global docFreqDict
 
+    wordWithZone = zone + "." + word
+    print wordWithZone
     # Newly encountered word
-    if word not in postingDict:
-
+    if wordWithZone not in postingDict:
         # Create Dict entry and posting list
-        postingsList = [(currentDocId, 1)] # Tuple: (posting, TF)
+        postingsList = [(currentDocId, [pos])] # Tuple: (posting, [posArr])
         postingDict[word] = postingsList
 
-        '''
-        # Create Dict entry and (DF, [ (Posting, TF), ...]) tuple
-        postingListEntry = (currentDocId, 1) 
-        postingEntry = (1, [postingListEntry]) # Tuple: (DF, postings list)
-        postingDict[word] = [postingsEntry]
-        '''
-
-        # Update Doc Freq Dict        
-        docFreqDict[word] = 1
-
     else:
-        
         # Check if currentDocId already registered in posting list.
         postingsList = postingDict[word]
         if postingsList[-1][TUPLE_DOC_ID] != currentDocId:
 
             # Add new entry if it does not exist
-            postingsList.append((currentDocId, 1))
-
-            # Increment docFreqDict count
-            docFreqDict[word] += 1
+            postingsList.append((currentDocId, [pos]))
         
-        # If currentDocId already exists, increment term freq
+        # If currentDocId already exists, append the new positional index
         else :
             existingTuple = postingsList[-1]
-            newTuple = (existingTuple[0], existingTuple[1] + 1)
+            newTuple = (existingTuple[0], existingTuple[1].append(pos))
             postingsList[-1] = newTuple
-
 
 def generateDictionaryAndPostingsFile(dictionary_file, postings_file):
     global pointerDict
 
-    pointerDict = dict()
+    pointerDict = {}
     fp = open(postings_file, "wb")
 
     # Create postings_file
@@ -205,12 +224,11 @@ def generateDictionaryAndPostingsFile(dictionary_file, postings_file):
 
     fp.close()
 
-    # write totalNumOfDocs, docLengthDict, pointerDict and docFreqDict to dictionary_file
+    # write docDict and pointerDict to dictionary_file
     fd = open(dictionary_file, "wb")
-    dictOfDictionaries = {"totalNumOfDocs": totalNumOfDocs, "docLengthDict": docLengthDict, "frequency": docFreqDict, "pointer": pointerDict}
+    dictOfDictionaries = {"doc": docDict, "pointer": pointerDict}
     pickle.dump(dictOfDictionaries, fd)
     fd.close()
-
 
 # FOR DEBUG
 def readPostings(postings_file, word):
@@ -258,26 +276,10 @@ if input_file_i == None or input_file_d == None or input_file_p == None:
     sys.exit(2)
 
 # main program
-readFilesInDirectory(input_file_i)
-#readSomeFilesInDirectory(input_file_i)
+#readFilesInDirectory(input_file_i)
+readSomeFilesInDirectory(input_file_i)
 generateDictionaryAndPostingsFile(input_file_d, input_file_p)
 #readDictionaries(input_file_d)
 
 # Sample run commandline for my local comp
 # python index.py -i "/Users/jane/nltk_data/corpora/reuters/training/" -d "dictionary.txt" -p "postings.txt"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
