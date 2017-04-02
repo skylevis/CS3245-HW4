@@ -21,8 +21,9 @@ TUPLE_POS_ARR = 1
 pointerDict = {} # stores the byte pointers for each term's posting array in the collection
 postingDict = {} # stores posting array for each term in collection
 docDict = {} # stores the raw length of each document in the collection
+totalNumOfDocs = 0
 currentDocId = 0
-numberOfDocumentsToRead = 2
+numberOfDocumentsToRead = 1500
 
 xmlparser = XMLParser()
 
@@ -40,28 +41,34 @@ def readFilesInDirectory(directory):
     totalNumOfDocs = len(listOfDir)
 
     # Go through every file in the given directory
+    docIndexed = 0
     for filename in listOfDir:
 
         # Retrieve File
         file = os.path.join(directory, filename)
 
         # Update currentDocId for reference later
-        currentDocId = int(filename)
+        currentDocId = int(filename.split('.')[0])
 
-        # Create new entry for docLengthDict
+        # Create new entry for doc
         docDict[currentDocId] = 0
 
         # Index the file
         indexDoc(file)
+        # Log Progress
+        docIndexed += 1
+        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs-1)
 
 # Current Main Method, for testing purposes, only index small portion of library
 def readSomeFilesInDirectory(directory):
     global currentDocId
     global docDict
+    global totalNumOfDocs
 
     totalNumOfDocs = numberOfDocumentsToRead
     filenameArray = os.listdir(directory)
 
+    docIndexed = 0
     for i in range(0, numberOfDocumentsToRead):
 
         # Get filename and file full directory
@@ -71,10 +78,13 @@ def readSomeFilesInDirectory(directory):
         # Update currentFilename for reference later
         currentDocId = int(filename.split('.')[0])
 
-        # Create new entry for docLengthDict
+        # Create new entry for doc
         docDict[currentDocId] = 0
 
         indexDoc(file) 
+        # Log Progress
+        docIndexed += 1
+        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs-1)
     
     # for doc, length in docDict.iteritems():
     # print(doc, length)
@@ -111,7 +121,6 @@ def combine_contracted(words):
 
     return combinedWords 
 
-
 def indexDoc(file):
     global xmlparser
     global docDict
@@ -119,10 +128,11 @@ def indexDoc(file):
     # Parse document using xmlparser
     xmlparser.parseDoc(file)
 
-    # --- Index Contents ---
-    indexZone("content", xmlparser.contentStr)
+    # --- Prepare doc entry ---
+    docDict[currentDocId] = {}
 
-    # --- Index other zones ---
+    # --- Index Zones ---
+    indexZone("content", xmlparser.contentStr)
     indexZone("title", xmlparser.titleStr)
     indexZone("source_type", xmlparser.sourceStr)
     indexZone("content_type", xmlparser.contentType)
@@ -130,23 +140,15 @@ def indexDoc(file):
     indexZone("domain", xmlparser.domain)
 
     # --- Store document properties ---
-    if currentDocId not in docDict:
-        docDict[currentDocId] = {
-                                "length" : 0,
-                                "jurisdiction": xmlparser.jurisdictionArr,
-                                "tag": xmlparser.tagArr,
-                                "areaoflaw": xmlparser.areaOfLawArr,
-                                "date": xmlparser.date
-                                }
-    else:
-        docDict[currentDocId].update({
-                                "jurisdiction": xmlparser.jurisdictionArr,
-                                "tag": xmlparser.tagArr,
-                                "areaoflaw": xmlparser.areaOfLawArr,
-                                "date": xmlparser.date
-                                })
+    docDict[currentDocId].update({
+                            "jurisdiction": xmlparser.jurisdictionArr,
+                            "tag": xmlparser.tagArr,
+                            "areaoflaw": xmlparser.areaOfLawArr,
+                            "date": xmlparser.date
+                            })
 
-    print "indexed", currentDocId
+    # print docDict[currentDocId]
+    # print "indexed", currentDocId
 
 def indexZone(zone, zoneString):
     global docDict
@@ -174,20 +176,29 @@ def indexZone(zone, zoneString):
         caseFoldedArray.append(word.lower())
 
     # Index each word
+    lengthDict = {}
     pos = 0
     for word in caseFoldedArray:
         indexWord(word, zone, pos)
         pos += 1
+        length = lengthDict.get(word, 0)
+        lengthDict[word] = length + 1
 
+    # Index content zone length for length normalisation
     if zone == "content":
-        # Store doc raw length
-        docDict[currentDocId] = {"length": len(caseFoldedArray)}
+        zoneLength = 0
+        for word in lengthDict.keys():
+            zoneLength += math.pow(lengthDict[word], 2)
+
+        zoneLength = math.sqrt(zoneLength) 
+        entry = "contentlength"
+        docDict[currentDocId].update({entry: zoneLength})
 
 def indexWord(word, zone, pos):
     global postingDict
 
     wordWithZone = zone + "." + word
-    print wordWithZone
+    # print wordWithZone
     # Newly encountered word
     if wordWithZone not in postingDict:
         # Create Dict entry and posting list
@@ -226,7 +237,7 @@ def generateDictionaryAndPostingsFile(dictionary_file, postings_file):
 
     # write docDict and pointerDict to dictionary_file
     fd = open(dictionary_file, "wb")
-    dictOfDictionaries = {"doc": docDict, "pointer": pointerDict}
+    dictOfDictionaries = {"document": docDict, "pointer": pointerDict, "collection": totalNumOfDocs}
     pickle.dump(dictOfDictionaries, fd)
     fd.close()
 

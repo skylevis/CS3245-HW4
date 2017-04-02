@@ -16,34 +16,28 @@ except:
 
 postingsFileDir = "postings.txt" 
 dictionaryFileDir = "dictionary.txt"
-postingsFile = open(postingsFileDir, "rb")
 
 DICTIONARY_POSTINGS = {}
-DICTIONARY_FREQUENCY = {}
+DICTIONARY_DOUCMENTS = {}
 COLLECTION_N = 0
 
 # Posting Pair Index
 DOCID = 0
-TF = 1
-
-# Returns top k results
-K_TOP = 10
+POS = 1
 
 # Debug Function to test single query
 def testQuery(boolean_string):
    # Prepare dictionary
     global DICTIONARY_POSTINGS
-    global DICTIONARY_FREQUENCY
-    global DICTIONARY_LENGTH
+    global DICTIONARY_DOUCMENTS
     global COLLECTION_N
 
     dictionaryFile = open(dictionaryFileDir, "rb")
     dictionary = pickle.load(dictionaryFile)
     dictionaryFile.close()
     DICTIONARY_POSTINGS = dictionary["pointer"]
-    DICTIONARY_FREQUENCY = dictionary["frequency"]
-    DICTIONARY_LENGTH = dictionary["docLengthDict"]
-    COLLECTION_N = dictionary["totalNumOfDocs"]
+    DICTIONARY_DOUCMENTS = dictionary["document"]
+    COLLECTION_N = dictionary["collection"]
 
     outputFile = open("output.txt", "w")
     
@@ -54,25 +48,24 @@ def testQuery(boolean_string):
 def performQueries(queryFileDir, outputFileDir):
     # Prepare dictionary
     global DICTIONARY_POSTINGS
-    global DICTIONARY_FREQUENCY
-    global DICTIONARY_LENGTH
+    global DICTIONARY_DOUCMENTS
     global COLLECTION_N
 
     dictionaryFile = open(dictionaryFileDir, "rb")
     dictionary = pickle.load(dictionaryFile)
     dictionaryFile.close()
     DICTIONARY_POSTINGS = dictionary["pointer"]
-    DICTIONARY_FREQUENCY = dictionary["frequency"]
-    DICTIONARY_LENGTH = dictionary["docLengthDict"]
-    COLLECTION_N = dictionary["totalNumOfDocs"]
+    DICTIONARY_FREQUENCY = dictionary["document"]
+    COLLECTION_N = dictionary["collection"]
 
     #Prepare outputFile
     outputFile = open(outputFileDir, "w")
 
     #Read queryFile
     queryFile = open(queryFileDir, "r")
-    for line in queryFile:
-        processQuery(line, outputFile)
+    # Query on first line only
+    line = queryFile.readline()
+    processQuery(line, outputFile)
 
     #Tear down when done
     tearDown(outputFile, queryFile)
@@ -85,11 +78,31 @@ def tearDown(outputFile, queryFile):
 # Process query string
 def processQuery(boolean_string, outputFile):
 
-    # Stem query terms
-    listOfTerms = word_tokenize(boolean_string)
-    listOfTerms = refineTerms(listOfTerms)
-    numberOfTerms = len(listOfTerms)
-    #print(listOfTerms)
+    # Break down query into search terms
+    searchTerms = getSearchTerms(boolean_string)
+
+    # Accumulate score
+    numberOfTerms = len(searchTerms)
+    docScoreDict = {}
+    for phrase in searchTerms:
+        # docScore = getRelevantDocWithScore(searchTerms)
+        wordList = refineTerms(word_tokenize(phrase))
+        wordLen = len(wordList)
+        docScoreDict = accumulateScore(wordList, docScoreDict)
+
+    # Debug
+    for doc in docScoreDict.keys():
+        print doc, docScoreDict[doc]
+    # writeResultsToOutputFile(topDoc, outputFile)
+    
+def accumulateScore(wordList, scoreDict):
+
+    # --- Get phrasal match score ---
+    phrasalScore = getRelevantDocWithScore(wordList)
+    print "phrasal score:", phrasalScore
+
+    # --- Get TF-IDF score from Content ---
+    numberOfWords = len(wordList)
 
     dict_postingsPair = {} # Term : Array of postings pair (docID, tf)
     dict_doc_vector = {}
@@ -98,45 +111,46 @@ def processQuery(boolean_string, outputFile):
     docIDArray = []
 
     # Get all unique documents
-    for term in listOfTerms:
+    for word in wordList:
 
         # Get array of postings pairs for this term
-        postingsList = getPostingsList(term)
+        zoneWord = "content." + word
+        postingsList = getPostingsList(zoneWord)
 
         # Save postings list into local dictionary
-        dict_postingsPair[term] = postingsList
+        dict_postingsPair[word] = postingsList
 
         # Append unique doc id
         docIDArray.extend(filter(lambda docId: docId not in docIDArray, 
                                             map(lambda pair: pair[DOCID], postingsList)))
 
-    # Initialise dictionary of zero vectors with size = numberOfTerms
+    # Initialise dictionary of zero vectors with size = numberOfWords
     for doc in docIDArray:
-        dict_doc_vector[doc] = [0] * numberOfTerms
+        dict_doc_vector[doc] = [0] * numberOfWords
 
     # Initialise query vector
-    query_vector = [0] * numberOfTerms
+    query_vector = [0] * numberOfWords
 
     # For each term in query
-    for i in range(len(listOfTerms)):
-        term = listOfTerms[i]
+    for i in range(numberOfWords):
+        word = wordList[i]
         # Construct query vector
-        # Get tf
-        termTfRaw = reduce(lambda x, y: x + (y == term), listOfTerms, 0)
-        termTfWt = 1 + math.log10(termTfRaw)
+        # Assume tf = 1
+        # termTfRaw = reduce(lambda x, y: x + (y == term), listOfTerms, 0)
+        # termTfWt = 1 + math.log10(termTfRaw)
         # Calculate idf
-        docFreq = DICTIONARY_FREQUENCY.get(term)
+        docFreq = len(dict_postingsPair[word])
         if docFreq > 0:
             idf = math.log10(COLLECTION_N / docFreq)
         else:
             idf = 0
-        query_vector[i] = termTfWt * idf
+        query_vector[i] = idf
 
         # For this term, get all documents and construct document vectors
-        for postingsPair in dict_postingsPair[term]:
+        for postingsPair in dict_postingsPair[word]:
 
             # Calculate tfWt
-            tfRaw = postingsPair[TF]
+            tfRaw = len(postingsPair[POS])
             if tfRaw > 0:
                 tfWt = 1 + math.log10(tfRaw)
             else:
@@ -144,24 +158,29 @@ def processQuery(boolean_string, outputFile):
 
             dict_doc_vector[postingsPair[DOCID]][i] = tfWt
 
-    heap = []
-    #print query_vector
+    # Calculate cos product score
+    cosProdScore = {}
     for doc in dict_doc_vector.keys():
         # Product of normalised document vector with query vector
-        dict_doc_vector[doc] = vectorProduct(lengthNormaliseVector(dict_doc_vector[doc], doc), 
+        docLength = DICTIONARY_DOUCMENTS[doc]["contentLength"]
+        query_vector = normaliseVector(query_vector)
+        dict_doc_vector[doc] = vectorProduct(lengthNormaliseVector(dict_doc_vector[doc], docLength), 
                                             query_vector)
+        cosProdScore[doc] = magnitude(dict_doc_vector[doc])
 
-        if len(heap) > K_TOP:
-            heapq.heappushpop(heap, (getScore(dict_doc_vector[doc]), doc))
-        else:
-            heapq.heappush(heap, (getScore(dict_doc_vector[doc]), doc))
-        #print doc, dict_doc_vector[doc]
+    # Tabulate intermediate score
+    for doc in phrasalScore.keys():
+        intScore = phrasalScore[doc]
+        intScore *= cosProdScore.get(doc, 0)
+        # accumulate scoreDict
+        accScore = scoreDict.get(doc, 0)
+        accScore += intScore
+        scoreDict[doc] = accScore
 
-    # Return Top K results
-    topDoc = heapq.nlargest(K_TOP, heap)
-    topDoc = map(lambda x: x[1], topDoc)
-    #print topDoc
-    writeResultsToOutputFile(topDoc, outputFile)
+    # Check for other zone matches
+
+    # Return accumulated scores
+    return scoreDict
 
 # Writes the input array of document ids to the outputFile in the correct format
 # REQUIRE: outputFile has to be ready for writting beforehand
@@ -194,20 +213,128 @@ def getPostingsList(term):
     # Get the index of the postings list byte position to load from. 
     # Default to -1 if not such term
     index = DICTIONARY_POSTINGS.get(term.lower(), -1)
-
+    print term, index
     if index >= 0:
         postingsFile.seek(index)
         array = pickle.load(postingsFile)
     
     return array
 
+def getRelevantDocuments(wordList):
+    # wordList = refineTerms(word_tokenize(searchTerms))
+    wordLen = len(wordList)
+
+    # Get postings lists for all words
+    postingsLists = []
+    for word in wordList:
+        word = "content." + word
+        postingsLists.append(getPostingsList(word))
+
+    # Filter out docs that are found in all lists
+    initialList = postingsLists[0]
+    for listIndex in range(1, wordLen):
+        relevant = []
+        nextList = postingsLists[listIndex]
+        c1 = 0
+        c2 = 0
+        while c1 < len(initialList) and c2 < len(nextList):
+            if initialList[c1][0] == nextList[c2][0]:
+                relevant.append(initialList[c1][0])
+                c1 += 1
+                c2 += 1
+            else:
+                if initialList[c1][0] > nextList[c2][0]:
+                    c2 += 1
+                else:
+                    c1 += 1
+
+        initialList = filter(lambda p: p[0] in relevant, initialList)
+
+    relevantDocIds = map(lambda p: p[0], initialList)
+    postingsLists = map(lambda list: filter(lambda p: p[0] in relevantDocIds, list), postingsLists)
+    #print(postingsLists)
+
+    relevantDocs = []
+    # using the first list as ref (as it has the first word)
+    for pairIndex in range(len(postingsLists[0])):
+        # For each pair, for each position in pair, check if subsequent positions exist in subsequent lists/words
+        pair = postingsLists[0][pairIndex]
+        for pos in pair[1]:
+            for listIndex in range(1, wordLen):
+                # Check if subseqeunt list contain next position
+                currentList = postingsLists[listIndex]
+                if (pos + listIndex) in currentList[pairIndex][1]:
+                    # Check if is last word/list
+                    if (listIndex == wordLen - 1):
+                        relevantDocs.append(currentList[pairIndex][0])
+                    # Else proceed to check for next word/list
+                    else:
+                        continue
+                # If not, break to next starting pos in initial pair
+                else:
+                    break
+
+    return relevantDocs
+
+def getRelevantDocWithScore(wordList):
+
+    def checkPairScore(pair, currentListIndex):
+        docId = pair[0]
+        positions = pair[1]
+        offset = 0
+        score = 1
+        for nextListIndex in range(currentListIndex + 1, len(postingsLists)):
+            offset += 1
+            nextList = postingsLists[nextListIndex]
+            similarDocPair = filter(lambda p: p[0] == docId, nextList)
+            if len(similarDocPair) > 0:
+                for pos in positions:
+                    if (pos + offset) in similarDocPair[0][1]:
+                        score += 1
+                        break
+        return score
+
+    # wordList = refineTerms(word_tokenize(searchTerms))
+    wordLen = len(wordList)
+
+    # Get postings lists for all words
+    postingsLists = []
+    for word in wordList:
+        word = "content." + word
+        postingsLists.append(getPostingsList(word))
+        print "intent", getPostingsList("intent")
+
+    result = {}
+    for plIndex in range(len(postingsLists)):
+        pl = postingsLists[plIndex]
+        for pair in pl:
+            score = checkPairScore(pair, plIndex)
+            oldScore = result.get(pair[0], 0)
+            if oldScore < score:
+                result.update({pair[0]: score})
+    
+    # Normalise score
+    # for doc in result.keys():
+    #     score = result.get(doc)
+    #     result[doc] = score / wordLen
+
+    # Dictionary of (docID: score)
+    return result
+
 # Vector Operations
-def lengthNormaliseVector(vector, doc):
-    length = DICTIONARY_LENGTH[doc]
+def normaliseVector(vector):
+    lengthSq = 0
+    for i in range(len(vector)):
+        lengthSq += math.pow(vector[i], 2)
+
+    length = sqrt(lengthSq)
+    return map(lambda x: x / length, vector)
+
+def lengthNormaliseVector(vector, length):
     if length == 0:
-        return map(lambda x: 0, vector);
+        return map(lambda x: 0, vector)
     else:
-        return map(lambda x: x / length, vector);
+        return map(lambda x: x / length, vector)
 
 def magnitude(vector):
     return math.sqrt(sum(vector[i] * vector[i] for i in range(len(vector))))
@@ -282,6 +409,11 @@ def combine_contracted(terms):
 
     return refinedTerms 
 
+def getSearchTerms(query):
+    searchTerms = query.split('AND')
+    searchTerms = map(lambda t: t.split('"')[1], searchTerms)
+    return searchTerms
+
 #####################################################
 
 def usage():
@@ -311,6 +443,7 @@ if dictionary_file_d == None or postings_file_p == None or query_file_q == None 
 
 postingsFileDir = postings_file_p
 dictionaryFileDir = dictionary_file_d
-performQueries(query_file_q, output_file_o)
+postingsFile = open(postingsFileDir, "rb")
+#performQueries(query_file_q, output_file_o)
 
-# testQuery("march acquisition")
+testQuery('''"intentional tort" AND "remoteness of damage"''')
