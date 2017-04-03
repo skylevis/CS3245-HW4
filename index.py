@@ -203,11 +203,11 @@ def indexWord(word, zone, pos):
     if wordWithZone not in postingDict:
         # Create Dict entry and posting list
         postingsList = [(currentDocId, [pos])] # Tuple: (posting, [posArr])
-        postingDict[word] = postingsList
+        postingDict[wordWithZone] = postingsList
 
     else:
         # Check if currentDocId already registered in posting list.
-        postingsList = postingDict[word]
+        postingsList = postingDict[wordWithZone]
         if postingsList[-1][TUPLE_DOC_ID] != currentDocId:
 
             # Add new entry if it does not exist
