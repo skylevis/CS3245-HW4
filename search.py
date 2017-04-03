@@ -213,7 +213,7 @@ def getPostingsList(term):
     # Get the index of the postings list byte position to load from. 
     # Default to -1 if not such term
     index = DICTIONARY_POSTINGS.get(term.lower(), -1)
-    print term, index
+    
     if index >= 0:
         postingsFile.seek(index)
         array = pickle.load(postingsFile)
@@ -302,7 +302,6 @@ def getRelevantDocWithScore(wordList):
     for word in wordList:
         word = "content." + word
         postingsLists.append(getPostingsList(word))
-        print "intent", getPostingsList("intent")
 
     result = {}
     for plIndex in range(len(postingsLists)):
