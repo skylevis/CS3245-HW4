@@ -23,7 +23,7 @@ postingDict = {} # stores posting array for each term in collection
 docDict = {} # stores the raw length of each document in the collection
 totalNumOfDocs = 0
 currentDocId = 0
-numberOfDocumentsToRead = 1500
+numberOfDocumentsToRead = 10
 
 xmlparser = XMLParser()
 
@@ -57,7 +57,7 @@ def readFilesInDirectory(directory):
         indexDoc(file)
         # Log Progress
         docIndexed += 1
-        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs-1)
+        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs)
 
 # Current Main Method, for testing purposes, only index small portion of library
 def readSomeFilesInDirectory(directory):
@@ -84,14 +84,21 @@ def readSomeFilesInDirectory(directory):
         indexDoc(file) 
         # Log Progress
         docIndexed += 1
-        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs-1)
+        print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs)
     
     # for doc, length in docDict.iteritems():
     # print(doc, length)
     
 
 def stem_tokens(tokens, stemmer):
-    return [stemmer.stem(token) for token in tokens]
+    result = []
+    for token in tokens:
+        try:
+            result.append(stemmer.stem(token))
+        except:
+            print token, "cannot be stemmed"
+            result.append(token)
+    return result
 
 # Combines tokens for contracted words that were previously
 # split due to word_tokenize
@@ -203,7 +210,6 @@ def indexWord(word, zone, pos):
     if wordWithZone not in postingDict:
         # Create Dict entry and posting list
         postingsList = [(currentDocId, [pos])] # Tuple: (posting, [posArr])
-        postingDict[wordWithZone] = postingsList
 
     else:
         # Check if currentDocId already registered in posting list.
@@ -216,8 +222,10 @@ def indexWord(word, zone, pos):
         # If currentDocId already exists, append the new positional index
         else :
             existingTuple = postingsList[-1]
-            newTuple = (existingTuple[0], existingTuple[1].append(pos))
-            postingsList[-1] = newTuple
+            existingTuple[TUPLE_POS_ARR].append(pos)
+            postingsList[-1] = existingTuple
+            
+    postingDict[wordWithZone] = postingsList
 
 def generateDictionaryAndPostingsFile(dictionary_file, postings_file):
     global pointerDict
@@ -287,8 +295,8 @@ if input_file_i == None or input_file_d == None or input_file_p == None:
     sys.exit(2)
 
 # main program
-#readFilesInDirectory(input_file_i)
-readSomeFilesInDirectory(input_file_i)
+readFilesInDirectory(input_file_i)
+#readSomeFilesInDirectory(input_file_i)
 generateDictionaryAndPostingsFile(input_file_d, input_file_p)
 #readDictionaries(input_file_d)
 

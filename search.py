@@ -8,7 +8,7 @@ from nltk.stem.porter import PorterStemmer
 import sys
 import getopt
 import math
-import heapq
+from datetime import datetime
 try:
    import cPickle as pickle
 except:
@@ -32,6 +32,7 @@ def testQuery(boolean_string):
     global DICTIONARY_DOUCMENTS
     global COLLECTION_N
 
+    start = datetime.now()
     dictionaryFile = open(dictionaryFileDir, "rb")
     dictionary = pickle.load(dictionaryFile)
     dictionaryFile.close()
@@ -40,7 +41,8 @@ def testQuery(boolean_string):
     COLLECTION_N = dictionary["collection"]
 
     outputFile = open("output.txt", "w")
-    
+    end = datetime.now()
+    print "spin up took", (end - start).total_seconds()
     processQuery(boolean_string, outputFile)
     postingsFile.close()
 
@@ -85,21 +87,40 @@ def processQuery(boolean_string, outputFile):
     numberOfTerms = len(searchTerms)
     docScoreDict = {}
     for phrase in searchTerms:
+        start = datetime.now()
+        print "iter:", phrase, "started"
         # docScore = getRelevantDocWithScore(searchTerms)
         wordList = refineTerms(word_tokenize(phrase))
         wordLen = len(wordList)
         docScoreDict = accumulateScore(wordList, docScoreDict)
+        iteration = datetime.now()
+        print "iteration:", phrase, "took", (iteration-start).total_seconds()
 
     # Debug
+    rank = []
     for doc in docScoreDict.keys():
-        print doc, docScoreDict[doc]
+        rank.append((doc, docScoreDict[doc]))
+
+    rank.sort(key=lambda tup: tup[1], reverse = True)
+    print rank
     # writeResultsToOutputFile(topDoc, outputFile)
     
 def accumulateScore(wordList, scoreDict):
 
     # --- Get phrasal match score ---
-    phrasalScore = getRelevantDocWithScore(wordList)
-    print "phrasal score:", phrasalScore
+    # phrasalScore = getRelevantDocWithScore(wordList)
+    # print "phrasal score:"
+    # for doc in phrasalScore.keys():
+    #     score = phrasalScore[doc]
+    #     if score > 1:
+    #         print doc, score
+
+    # --- Get documents with exact phrasal match
+    start = datetime.now()
+    relevantDocs = getRelevantDocuments(wordList)
+    end = datetime.now()
+    print "phrasal match took:", (end-start).total_seconds()
+    # print relevantDocs
 
     # --- Get TF-IDF score from Content ---
     numberOfWords = len(wordList)
@@ -108,7 +129,8 @@ def accumulateScore(wordList, scoreDict):
     dict_doc_vector = {}
     dict_query_vector = {}
     query_vector = []
-    docIDArray = []
+    # docIDArray = []
+    docIDArray = relevantDocs
 
     # Get all unique documents
     for word in wordList:
@@ -118,11 +140,12 @@ def accumulateScore(wordList, scoreDict):
         postingsList = getPostingsList(zoneWord)
 
         # Save postings list into local dictionary
+        filter(lambda p: p[DOCID] in docIDArray, postingsList)
         dict_postingsPair[word] = postingsList
 
         # Append unique doc id
-        docIDArray.extend(filter(lambda docId: docId not in docIDArray, 
-                                            map(lambda pair: pair[DOCID], postingsList)))
+        # docIDArray.extend(filter(lambda docId: docId not in docIDArray, 
+        #                                     map(lambda pair: pair[DOCID], postingsList)))
 
     # Initialise dictionary of zero vectors with size = numberOfWords
     for doc in docIDArray:
@@ -148,34 +171,45 @@ def accumulateScore(wordList, scoreDict):
 
         # For this term, get all documents and construct document vectors
         for postingsPair in dict_postingsPair[word]:
+            if postingsPair[DOCID] in dict_doc_vector:
+                # Calculate tfWt
+                tfRaw = len(postingsPair[POS])
+                if tfRaw > 0:
+                    tfWt = 1 + math.log10(tfRaw)
+                else:
+                    tfWt = 0
 
-            # Calculate tfWt
-            tfRaw = len(postingsPair[POS])
-            if tfRaw > 0:
-                tfWt = 1 + math.log10(tfRaw)
-            else:
-                tfWt = 0
-
-            dict_doc_vector[postingsPair[DOCID]][i] = tfWt
+                dict_doc_vector[postingsPair[DOCID]][i] = tfWt
 
     # Calculate cos product score
     cosProdScore = {}
     for doc in dict_doc_vector.keys():
         # Product of normalised document vector with query vector
-        docLength = DICTIONARY_DOUCMENTS[doc]["contentLength"]
+        docLength = DICTIONARY_DOUCMENTS[doc]["contentlength"]
         query_vector = normaliseVector(query_vector)
         dict_doc_vector[doc] = vectorProduct(lengthNormaliseVector(dict_doc_vector[doc], docLength), 
                                             query_vector)
         cosProdScore[doc] = magnitude(dict_doc_vector[doc])
 
     # Tabulate intermediate score
-    for doc in phrasalScore.keys():
-        intScore = phrasalScore[doc]
-        intScore *= cosProdScore.get(doc, 0)
-        # accumulate scoreDict
+    # for doc in phrasalScore.keys():
+    #     intScore = phrasalScore[doc]
+    #     if intScore < 2:
+    #         intScore = 0 # Debug: Consider phrasal matches of at least 2 words
+    #     intScore *= cosProdScore.get(doc, 0)
+    #     # accumulate scoreDict
+    #     accScore = scoreDict.get(doc, 0)
+    #     accScore += intScore
+    #     if accScore > 0:
+    #         scoreDict[doc] = accScore
+
+    # Add cosScore
+    for doc in docIDArray:
+        cosScore = cosProdScore.get(doc, 0)
         accScore = scoreDict.get(doc, 0)
-        accScore += intScore
-        scoreDict[doc] = accScore
+        accScore += cosScore
+        if accScore > 0:
+            scoreDict[doc] = accScore
 
     # Check for other zone matches
 
@@ -326,7 +360,7 @@ def normaliseVector(vector):
     for i in range(len(vector)):
         lengthSq += math.pow(vector[i], 2)
 
-    length = sqrt(lengthSq)
+    length = math.sqrt(lengthSq)
     return map(lambda x: x / length, vector)
 
 def lengthNormaliseVector(vector, length):
@@ -445,4 +479,4 @@ dictionaryFileDir = dictionary_file_d
 postingsFile = open(postingsFileDir, "rb")
 #performQueries(query_file_q, output_file_o)
 
-testQuery('''"intentional tort" AND "remoteness of damage"''')
+testQuery('''"Interlocutory order or direction"''')
