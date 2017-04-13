@@ -143,10 +143,10 @@ def indexDoc(file):
 
     # --- Store document properties ---
     docDict[currentDocId].update({
-                            "source_type", xmlparser.sourceStr,
-                            "content_type", xmlparser.contentType,
-                            "court", xmlparser.court,
-                            "domain", xmlparser.domain,
+                            "source_type": xmlparser.sourceStr,
+                            "content_type": xmlparser.contentType,
+                            "court": xmlparser.court,
+                            "domain": xmlparser.domain,
                             "jurisdiction": xmlparser.jurisdictionArr,
                             "tag": xmlparser.tagArr,
                             "areaoflaw": xmlparser.areaOfLawArr,
