@@ -140,14 +140,13 @@ def indexDoc(file):
 
     # --- Index Zones ---
     indexZone("content", xmlparser.contentStr)
-    indexZone("title", xmlparser.titleStr)
-    indexZone("source_type", xmlparser.sourceStr)
-    indexZone("content_type", xmlparser.contentType)
-    indexZone("court", xmlparser.court)
-    indexZone("domain", xmlparser.domain)
 
     # --- Store document properties ---
     docDict[currentDocId].update({
+                            "source_type", xmlparser.sourceStr,
+                            "content_type", xmlparser.contentType,
+                            "court", xmlparser.court,
+                            "domain", xmlparser.domain,
                             "jurisdiction": xmlparser.jurisdictionArr,
                             "tag": xmlparser.tagArr,
                             "areaoflaw": xmlparser.areaOfLawArr,

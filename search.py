@@ -82,19 +82,25 @@ def processQuery(boolean_string, outputFile):
 
     # Break down query into search terms
     searchTerms = getSearchTerms(boolean_string)
+    tokens = []
 
-    # Accumulate score
+    # --- Accumulate score ---
     numberOfTerms = len(searchTerms)
     docScoreDict = {}
     for phrase in searchTerms:
         start = datetime.now()
         print "iter:", phrase, "started"
-        # docScore = getRelevantDocWithScore(searchTerms)
         wordList = refineTerms(word_tokenize(phrase))
+        for token in wordList:
+            tokens.append(token)
         wordLen = len(wordList)
-        docScoreDict = accumulateScore(wordList, docScoreDict)
+        # Accumulate cosine similarity score (+ phrasal match; + hard conjunction)
+        docScoreDict = accumulateCosScore(wordList, docScoreDict)
         iteration = datetime.now()
         print "iteration:", phrase, "took", (iteration-start).total_seconds()
+
+    # Accumulate score from modifiers, eg: matches Tag/Area of Law
+    docScoreDict = accumulateExtraScore(tokens, docScoreDict)
 
     # Debug
     rank = []
@@ -102,10 +108,12 @@ def processQuery(boolean_string, outputFile):
         rank.append((doc, docScoreDict[doc]))
 
     rank.sort(key=lambda tup: tup[1], reverse = True)
-    print rank
+    for item in rank:
+        print item
     # writeResultsToOutputFile(topDoc, outputFile)
-    
-def accumulateScore(wordList, scoreDict):
+  
+# accumulate the score for each doc relevant to the phrase/wordList  
+def accumulateCosScore(wordList, scoreDict):
 
     # --- Get phrasal match score ---
     # phrasalScore = getRelevantDocWithScore(wordList)
@@ -120,7 +128,20 @@ def accumulateScore(wordList, scoreDict):
     relevantDocs = getRelevantDocuments(wordList)
     end = datetime.now()
     print "phrasal match took:", (end-start).total_seconds()
-    # print relevantDocs
+    #print relevantDocs
+
+    # --- Hard Conjunction ---
+    if not isEmpty(scoreDict.keys()):
+        currentDocList = scoreDict.keys()
+        intersectionAndRemoval = getIntersectionAndRemoval(sorted(currentDocList), 
+                                                        relevantDocs)
+        # remove non-intersecting documents from score dictionary
+        if not isEmpty(intersectionAndRemoval[1]):
+            for doc in intersectionAndRemoval[1]:
+                scoreDict.pop(doc, None)
+
+        # consider only the intersecting documents
+        relevantDocs = intersectionAndRemoval[0]
 
     # --- Get TF-IDF score from Content ---
     numberOfWords = len(wordList)
@@ -129,7 +150,6 @@ def accumulateScore(wordList, scoreDict):
     dict_doc_vector = {}
     dict_query_vector = {}
     query_vector = []
-    # docIDArray = []
     docIDArray = relevantDocs
 
     # Get all unique documents
@@ -211,9 +231,47 @@ def accumulateScore(wordList, scoreDict):
         if accScore > 0:
             scoreDict[doc] = accScore
 
-    # Check for other zone matches
-
     # Return accumulated scores
+    return scoreDict
+
+# Accumulate score from other aspects, Eg: matching Tags/ Area of Law
+def accumulateExtraScore(tokens, scoreDict):
+    # --- Modifiers ---
+    mod_source = 0.1
+    mod_content = 0.1
+    mod_court = 0.2
+    mod_tag = 0.3
+    mod_law = 0.3
+
+    # Accumulate extra score for each document in dictionary
+    for doc in scoreDict.keys():
+        docMetaData = DICTIONARY_DOUCMENTS[doc]
+        extraScore == 0
+        # Process sourceType [str]
+        sourceType = docMetaData.get("source_type", "nil")
+        if sourceType != "nil":
+            
+
+        # Process content_type [str]
+        contentType = docMetaData.get("content_type", "nil")
+        if contentType != "nil":
+
+        # Process court [str]
+        court = docMetaData.get("court", "nil")
+        if court != "nil":
+
+        # process tag [arr]
+        tags = docMetaData.get("tag", [])
+        if not isEmpty(tags):
+
+        # process areaoflaw [arr]
+        areaoflaw = docMetaData.get("areaoflaw", [])
+        if not isEmpty(areaoflaw):
+
+        # Update score
+        if extraScore > 0:
+            scoreDict[doc] += extraScore
+
     return scoreDict
 
 # Writes the input array of document ids to the outputFile in the correct format
@@ -264,8 +322,13 @@ def getRelevantDocuments(wordList):
         word = "content." + word
         postingsLists.append(getPostingsList(word))
 
-    # Filter out docs that are found in all lists
     initialList = postingsLists[0]
+    # If phrase has only 1 word, return the postings list
+    if wordLen == 1:
+        relevantDocs = map(lambda pair: pair[DOCID], initialList)
+        return relevantDocs
+
+    # Filter out docs that are found in all words' postings list in phrase
     for listIndex in range(1, wordLen):
         relevant = []
         nextList = postingsLists[listIndex]
@@ -273,6 +336,7 @@ def getRelevantDocuments(wordList):
         c2 = 0
         while c1 < len(initialList) and c2 < len(nextList):
             if initialList[c1][0] == nextList[c2][0]:
+                # if rele
                 relevant.append(initialList[c1][0])
                 c1 += 1
                 c2 += 1
@@ -286,21 +350,27 @@ def getRelevantDocuments(wordList):
 
     relevantDocIds = map(lambda p: p[0], initialList)
     postingsLists = map(lambda list: filter(lambda p: p[0] in relevantDocIds, list), postingsLists)
-    #print(postingsLists)
 
     relevantDocs = []
+    nextDoc = 0 # Switch to jump to next doc
     # using the first list as ref (as it has the first word)
     for pairIndex in range(len(postingsLists[0])):
         # For each pair, for each position in pair, check if subsequent positions exist in subsequent lists/words
         pair = postingsLists[0][pairIndex]
         for pos in pair[1]:
+            if nextDoc:
+                nextDoc = 0
+                break
             for listIndex in range(1, wordLen):
-                # Check if subseqeunt list contain next position
+                # Check if subsequent list contain next position
                 currentList = postingsLists[listIndex]
                 if (pos + listIndex) in currentList[pairIndex][1]:
                     # Check if is last word/list
                     if (listIndex == wordLen - 1):
                         relevantDocs.append(currentList[pairIndex][0])
+                        # Break to next doc
+                        nextDoc = 1
+                        break
                     # Else proceed to check for next word/list
                     else:
                         continue
@@ -353,6 +423,34 @@ def getRelevantDocWithScore(wordList):
 
     # Dictionary of (docID: score)
     return result
+
+def getIntersectionAndRemoval(list1, list2):
+    # Returns a Pair containing:
+    # 1. the list of elements that intersect both lists
+    # 2. the list of elements in list1 which do not intersect
+    # Assumes list1 and list2 are sorted
+    intersection = []
+    removal = []
+    c1 = 0
+    c2 = 0
+    # Do a linear traversal of both lists
+    while c1 < len(list1) and c2 < len(list2):
+        if list1[c1] == list2[c2]:
+            intersection.append(list1[c1])
+            c1 += 1
+            c2 += 1
+        elif list1[c1] > list2[c2]:
+            c2 += 1
+        else:
+            removal.append(list1[c1])
+            c1 += 1
+
+    # If there are remaining entries in list1, append them to removal
+    while c1 < len(list1):
+        removal.append(list1[c1])
+        c1 += 1
+
+    return (intersection, removal)
 
 # Vector Operations
 def normaliseVector(vector):
@@ -479,4 +577,4 @@ dictionaryFileDir = dictionary_file_d
 postingsFile = open(postingsFileDir, "rb")
 #performQueries(query_file_q, output_file_o)
 
-testQuery('''"Interlocutory order or direction"''')
+testQuery('''"intentional tort" AND "nominal damages"''')
