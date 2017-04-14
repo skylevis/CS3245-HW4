@@ -271,7 +271,7 @@ def accumulateExtraScore(tokens, scoreDict):
     # Accumulate extra score for each document in dictionary
     for doc in scoreDict.keys():
         docMetaData = DICTIONARY_DOCUMENTS[doc]
-        extraScore == 0
+        extraScore = 0
         # Process sourceType [str]
         sourceType = docMetaData.get("source_type", "nil")
         if sourceType != "nil":
@@ -298,6 +298,7 @@ def accumulateExtraScore(tokens, scoreDict):
         # process tag [arr]
         tags = docMetaData.get("tag", [])
         if not isEmpty(tags):
+            print "tags"
             # TODO: PREPROCESS TOKENS first
             # Compare tokens with every tag in the array, if match, remove tag from array.
             # count how many tags were removed / total tags --> Proportion to the mod_tag score.
@@ -305,6 +306,7 @@ def accumulateExtraScore(tokens, scoreDict):
         # process areaoflaw [arr]
         areaoflaw = docMetaData.get("areaoflaw", [])
         if not isEmpty(areaoflaw):
+            print "areaoflaw"
             # TODO: PREPROCESS TOKENS first
             # Do same things as tags
 
