@@ -17,7 +17,11 @@ Similiar to HW2 and HW3, the indexer will index the corpus and writes the dictio
 
 == XML PARSING ==
 
+To parse the documents in the intellex directory, we have to use a XML parser. After looking through the built-in xml parsers availabe to python readily, we decided to make use of the xml.dom library's light weight minidom parser. We decided to provide support for extracting as much information as possible from the document and worry about their usage later. To simplify the xml parsing subsequently in the indexer, we also encapsulated the parsing functionality into a XMLParser object.
+
 == ZONAL INDEXING ==
+
+To ensure that the search.py algorithm works correctly, we also attempted to stem the data in the zones similar to how we did for indexing the data in the content. This is to ensure that subsequent matching in the search algorithm can be generalised for both content and other zones, reducing the chances for error.
 
 == POSITIONAL INDICES ==
 
