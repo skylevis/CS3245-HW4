@@ -78,11 +78,12 @@ def performQueries(queryFileDir, outputFileDir):
     global DICTIONARY_DOCUMENTS
     global COLLECTION_N
 
+    start = datetime.now()
     dictionaryFile = open(dictionaryFileDir, "rb")
     dictionary = pickle.load(dictionaryFile)
     dictionaryFile.close()
     DICTIONARY_POSTINGS = dictionary["pointer"]
-    DICTIONARY_FREQUENCY = dictionary["document"]
+    DICTIONARY_DOCUMENTS = dictionary["document"]
     COLLECTION_N = dictionary["collection"]
 
     #Prepare outputFile
@@ -92,6 +93,8 @@ def performQueries(queryFileDir, outputFileDir):
     queryFile = open(queryFileDir, "r")
     # Query on first line only
     line = queryFile.readline()
+    end = datetime.now()
+    print "spin up took", (end - start).total_seconds()
     processQuery(line, outputFile)
 
     #Tear down when done
@@ -135,7 +138,8 @@ def processQuery(boolean_string, outputFile):
     rank.sort(key=lambda tup: tup[1], reverse = True)
     for item in rank:
         print item
-    # writeResultsToOutputFile(topDoc, outputFile)
+    
+    writeResultsToOutputFile(rank, outputFile)
   
 # accumulate the score for each doc relevant to the phrase/wordList  
 def accumulateCosScore(wordList, scoreDict):
@@ -297,62 +301,70 @@ def accumulateExtraScore(tokens, scoreDict):
 
         # process tag [arr]
         tags = docMetaData.get("tag", [])
-        tagsCopied = tags
+        # tagsCopied = tags
+        numMatches = 0
+        # print doc, tags
         if not isEmpty(tags):
             
             # Go through every token, check for a match with the tagsCopied array
             for token in tokens:
-                for tag in tagsCopied:
+                for tag in tags:
 
                     # If matched, remove this tag from tagsCopied so that this match will not happen again
-                    if token == tag:
-                        tagsCopied.remove(tag)
+                    if token in tag:
+                        # print "match tag", token, tag
+                        numMatches += 1
 
             # count how many tags were removed / total tags --> Proportion to the mod_tag score
-            numMatches = len(tags) - len(tagsCopied)
-            extraScore += (numMatches / len(tags)) * mod_tag
+            extraScore += (1.0 * numMatches / len(tags)) * mod_tag
+            # if numMatches > 0:
+            #     print (1.0 * numMatches / len(tags)) * mod_tag
 
         # process areaoflaw [arr]
         areaoflaw = docMetaData.get("areaoflaw", [])
-        areasCopied = areaoflaw
+        numMatches = 0
+        # areasCopied = areaoflaw
+        # print doc, areaoflaw
         if not isEmpty(areaoflaw):
-            print "areaoflaw"
             
             # Go through every token, check for a match with the areasCopied array
             for token in tokens:
-                for area in areasCopied:
+                for area in areaoflaw:
 
                     # If matched, remove this area from areasCopied so that this match will not happen again
-                    if token == area:
-                        areasCopied.remove(area)
+                    if token in area:
+                        # print "match area", token, area
+                        numMatches += 1
 
             # count how many elements were removed / total elements --> Proportion to the mod_law score
-            numMatches = len(areaoflaw) - len(areasCopied)
-            extraScore += (numMatches / len(areaoflaw)) * mod_law
+            extraScore += (1.0 * numMatches / len(areaoflaw)) * mod_law
+            # if numMatches > 0:
+            #     print (1.0 * numMatches / len(areaoflaw)) * mod_law
 
         # Update score
         if extraScore > 0:
-            scoreDict[doc] += extraScore
+            scoreDict[doc] += (scoreDict[doc] * extraScore)
+            # print doc, extraScore
 
     return scoreDict
 
 # Writes the input array of document ids to the outputFile in the correct format
 # REQUIRE: outputFile has to be ready for writting beforehand
-def writeResultsToOutputFile(results, outputFile):
+def writeResultsToOutputFile(rank, outputFile):
     writtenString = ""
 
-    if isEmpty(results):
+    if isEmpty(rank):
         writtenString = ""
     else:
     # Loop through all terms append to writtenString with a space in between terms
-        for term in results:
-            writtenString += str(term) + " "
+        for item in rank:
+            writtenString += str(item[0]) + " "
 
     # Remove trailing space
     writtenString = writtenString.strip()
 
     # Write to file
-    outputFile.write(writtenString + "\n")
+    outputFile.write(writtenString)
 
     # DEBUG print
     # print(writtenString)
@@ -637,6 +649,6 @@ if dictionary_file_d == None or postings_file_p == None or query_file_q == None 
 postingsFileDir = postings_file_p
 dictionaryFileDir = dictionary_file_d
 postingsFile = open(postingsFileDir, "rb")
-#performQueries(query_file_q, output_file_o)
+performQueries(query_file_q, output_file_o)
 
-testQuery('''"intentional tort" AND "nominal damages"''')
+#testQuery('''"intentional tort" AND "remoteness of damage"''')
