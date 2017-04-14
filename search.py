@@ -144,7 +144,7 @@ def processQuery(boolean_string, outputFile):
 # accumulate the score for each doc relevant to the phrase/wordList  
 def accumulateCosScore(wordList, scoreDict):
 
-    # --- Get phrasal match score ---
+    # --- Get phrasal match score --- :Rejected: Gives too many results
     # phrasalScore = getRelevantDocWithScore(wordList)
     # print "phrasal score:"
     # for doc in phrasalScore.keys():
@@ -157,9 +157,8 @@ def accumulateCosScore(wordList, scoreDict):
     relevantDocs = getRelevantDocuments(wordList)
     end = datetime.now()
     print "phrasal match took:", (end-start).total_seconds()
-    #print relevantDocs
 
-    # --- Hard Conjunction ---
+    # --- Hard Conjunction --- :Used to further trim down results
     if not isEmpty(scoreDict.keys()):
         currentDocList = scoreDict.keys()
         intersectionAndRemoval = getIntersectionAndRemoval(sorted(currentDocList), 
@@ -240,7 +239,7 @@ def accumulateCosScore(wordList, scoreDict):
                                             query_vector)
         cosProdScore[doc] = magnitude(dict_doc_vector[doc])
 
-    # Tabulate intermediate score
+    # Tabulate intermediate score :Rejected: Not using partial phrasal match
     # for doc in phrasalScore.keys():
     #     intScore = phrasalScore[doc]
     #     if intScore < 2:
@@ -294,16 +293,9 @@ def accumulateExtraScore(tokens, scoreDict):
             score = courtScore.get(court, 0)
             extraScore += mod_court * score
 
-            # DEBUG TO CATCH COURTS NOT STORED
-            if score == 0:
-                print("Court: " + court + " has 0 score.")
-                
-
         # process tag [arr]
         tags = docMetaData.get("tag", [])
-        # tagsCopied = tags
         numMatches = 0
-        # print doc, tags
         if not isEmpty(tags):
             
             # Go through every token, check for a match with the tagsCopied array
@@ -312,19 +304,14 @@ def accumulateExtraScore(tokens, scoreDict):
 
                     # If matched, remove this tag from tagsCopied so that this match will not happen again
                     if token in tag:
-                        # print "match tag", token, tag
                         numMatches += 1
 
             # count how many tags were removed / total tags --> Proportion to the mod_tag score
             extraScore += (1.0 * numMatches / len(tags)) * mod_tag
-            # if numMatches > 0:
-            #     print (1.0 * numMatches / len(tags)) * mod_tag
 
         # process areaoflaw [arr]
         areaoflaw = docMetaData.get("areaoflaw", [])
         numMatches = 0
-        # areasCopied = areaoflaw
-        # print doc, areaoflaw
         if not isEmpty(areaoflaw):
             
             # Go through every token, check for a match with the areasCopied array
@@ -333,18 +320,14 @@ def accumulateExtraScore(tokens, scoreDict):
 
                     # If matched, remove this area from areasCopied so that this match will not happen again
                     if token in area:
-                        # print "match area", token, area
                         numMatches += 1
 
             # count how many elements were removed / total elements --> Proportion to the mod_law score
             extraScore += (1.0 * numMatches / len(areaoflaw)) * mod_law
-            # if numMatches > 0:
-            #     print (1.0 * numMatches / len(areaoflaw)) * mod_law
 
-        # Update score
+        # Update score, add multiplier to score
         if extraScore > 0:
             scoreDict[doc] += (scoreDict[doc] * extraScore)
-            # print doc, extraScore
 
     return scoreDict
 
@@ -366,9 +349,6 @@ def writeResultsToOutputFile(rank, outputFile):
     # Write to file
     outputFile.write(writtenString)
 
-    # DEBUG print
-    # print(writtenString)
-
 # Convenience Methods
 def isEmpty(list):
     return len(list) == 0
@@ -386,6 +366,7 @@ def getPostingsList(term):
     
     return array
 
+# Used for retrieving documents that has an exact match of the given wordList.
 def getRelevantDocuments(wordList):
     # wordList = refineTerms(word_tokenize(searchTerms))
     wordLen = len(wordList)
@@ -410,7 +391,6 @@ def getRelevantDocuments(wordList):
         c2 = 0
         while c1 < len(initialList) and c2 < len(nextList):
             if initialList[c1][0] == nextList[c2][0]:
-                # if rele
                 relevant.append(initialList[c1][0])
                 c1 += 1
                 c2 += 1
@@ -454,8 +434,10 @@ def getRelevantDocuments(wordList):
 
     return relevantDocs
 
+# Used for retrieving documents that satisfy partial matches and append a score to their degree of match
 def getRelevantDocWithScore(wordList):
 
+    # Helper function to filter out partial matches that falls below a threshold value
     def checkPairScore(pair, currentListIndex):
         docId = pair[0]
         positions = pair[1]
@@ -489,11 +471,6 @@ def getRelevantDocWithScore(wordList):
             oldScore = result.get(pair[0], 0)
             if oldScore < score:
                 result.update({pair[0]: score})
-    
-    # Normalise score
-    # for doc in result.keys():
-    #     score = result.get(doc)
-    #     result[doc] = score / wordLen
 
     # Dictionary of (docID: score)
     return result

@@ -64,6 +64,7 @@ def readFilesInDirectory(directory):
 
         # Index the file
         indexDoc(file)
+
         # Log Progress
         docIndexed += 1
         print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs)
@@ -104,8 +105,6 @@ def readSomeFilesInDirectory(directory):
         docIndexed += 1
         print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs)
     
-    # for doc, length in docDict.iteritems():
-    # print(doc, length)
     end = datetime.now()
     print "Index Complete. Time taken:", (end-start).total_seconds()
 
@@ -167,9 +166,6 @@ def indexDoc(file):
     # Parse document using xmlparser
     xmlparser.parseDoc(file)
 
-    # xmlParseTime = datetime.now()
-    # print "xml parsing took:", (xmlParseTime-start).total_seconds()
-
     # --- Prepare doc entry ---
     docDict[currentDocId] = {}
 
@@ -186,9 +182,6 @@ def indexDoc(file):
         processedArea = preprocessText(area)
         areaOfLawArr.append(processedArea)
 
-    # contentIndexingTime = datetime.now()
-    # print "content indexing took:", (contentIndexingTime-xmlParseTime).total_seconds()
-
     # --- Store document properties ---
     docDict[currentDocId].update({
                             "source_type": xmlparser.sourceStr,
@@ -201,22 +194,11 @@ def indexDoc(file):
                             "date": xmlparser.date
                             })
 
-    # print "indexed", currentDocId
-    # interationTime = datetime.now()
-    # print "iteration took:", (interationTime-start).total_seconds()
-
 def indexZone(zone, zoneString):
     global docDict
 
-    # start = datetime.now()
-    # print "\n --- Stemming ----"
-
     # Preprocess zone string to array of words
     words = preprocessText(zoneString)
-
-    # stemTime = datetime.now()
-    # print "stemming took:", (stemTime-start).total_seconds()
-    # print " --- Indexing ---"
 
     # Index each word
     lengthDict = {}
@@ -226,10 +208,6 @@ def indexZone(zone, zoneString):
         pos += 1
         length = lengthDict.get(word, 0)
         lengthDict[word] = length + 1
-
-    # indexTime = datetime.now()
-    # print "indexing took:", (indexTime-stemTime).total_seconds()
-    # print " --- Length Normalisation ---"
 
     # Index content zone length for length normalisation
     if zone == "content":
@@ -241,14 +219,10 @@ def indexZone(zone, zoneString):
         entry = "contentlength"
         docDict[currentDocId].update({entry: zoneLength})
 
-    # end = datetime.now()
-    # print "normalisation took:", (end-indexTime).total_seconds(), "\n"
-
 def indexWord(word, zone, pos):
     global postingDict
 
     wordWithZone = zone + "." + word
-    # print wordWithZone
     # Newly encountered word
     if wordWithZone not in postingDict:
         # Create Dict entry and posting list
@@ -348,7 +322,7 @@ def readDictionaries(dictionary_file):
 def usage():
     print "usage: " + sys.argv[0] + " -i directory-of-documents -d dictionary-file -p postings-file"
 
-# Handle run
+# Main Program
 input_file_i = input_file_d = input_file_p = None
 try:
     opts, args = getopt.getopt(sys.argv[1:], 'i:d:p:')
