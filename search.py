@@ -18,18 +18,43 @@ postingsFileDir = "postings.txt"
 dictionaryFileDir = "dictionary.txt"
 
 DICTIONARY_POSTINGS = {}
-DICTIONARY_DOUCMENTS = {}
+DICTIONARY_DOCUMENTS = {}
 COLLECTION_N = 0
 
 # Posting Pair Index
 DOCID = 0
 POS = 1
 
+# SGCA (court of appeal 1)
+# SGDC (District Court 4)
+# SGHC (high court 2)
+# SGHCF (High court family 3)
+# SGHC(I) (Singapore international commercial court 4)
+# SGIAC (Industrial Arbitration Court 4)
+# SGJC (youth court  4)
+# SGMC (Magistrate's court 4)
+# SGMCA (Military court of appeal 4)
+# SGIPOS (Intellectual Property Office of Singapore 4)
+
+# Court Ranking
+courtScore = {
+    "SGCA": 1,
+    "SGHC": 0.75,
+    "SGHCF": 0.75,
+    "SGDC": 0.5,
+    "SGMC": 0.5,
+    "SGHC(I)": 0.5,
+    "SGIAC": 0.5,
+    "SGJC": 0.5,
+    "SGMCA": 0.5,
+    "SGIPOS": 0.5
+}
+
 # Debug Function to test single query
 def testQuery(boolean_string):
    # Prepare dictionary
     global DICTIONARY_POSTINGS
-    global DICTIONARY_DOUCMENTS
+    global DICTIONARY_DOCUMENTS
     global COLLECTION_N
 
     start = datetime.now()
@@ -37,7 +62,7 @@ def testQuery(boolean_string):
     dictionary = pickle.load(dictionaryFile)
     dictionaryFile.close()
     DICTIONARY_POSTINGS = dictionary["pointer"]
-    DICTIONARY_DOUCMENTS = dictionary["document"]
+    DICTIONARY_DOCUMENTS = dictionary["document"]
     COLLECTION_N = dictionary["collection"]
 
     outputFile = open("output.txt", "w")
@@ -50,7 +75,7 @@ def testQuery(boolean_string):
 def performQueries(queryFileDir, outputFileDir):
     # Prepare dictionary
     global DICTIONARY_POSTINGS
-    global DICTIONARY_DOUCMENTS
+    global DICTIONARY_DOCUMENTS
     global COLLECTION_N
 
     dictionaryFile = open(dictionaryFileDir, "rb")
@@ -205,7 +230,7 @@ def accumulateCosScore(wordList, scoreDict):
     cosProdScore = {}
     for doc in dict_doc_vector.keys():
         # Product of normalised document vector with query vector
-        docLength = DICTIONARY_DOUCMENTS[doc]["contentlength"]
+        docLength = DICTIONARY_DOCUMENTS[doc]["contentlength"]
         query_vector = normaliseVector(query_vector)
         dict_doc_vector[doc] = vectorProduct(lengthNormaliseVector(dict_doc_vector[doc], docLength), 
                                             query_vector)
@@ -245,28 +270,43 @@ def accumulateExtraScore(tokens, scoreDict):
 
     # Accumulate extra score for each document in dictionary
     for doc in scoreDict.keys():
-        docMetaData = DICTIONARY_DOUCMENTS[doc]
+        docMetaData = DICTIONARY_DOCUMENTS[doc]
         extraScore == 0
         # Process sourceType [str]
         sourceType = docMetaData.get("source_type", "nil")
         if sourceType != "nil":
-            
+            if sourceType == "primary":
+                extraScore += mod_source
 
         # Process content_type [str]
         contentType = docMetaData.get("content_type", "nil")
         if contentType != "nil":
+            if contentType == "case":
+                extraScore += mod_content
 
         # Process court [str]
         court = docMetaData.get("court", "nil")
         if court != "nil":
+            score = courtScore.get(court, 0)
+            extraScore += mod_court * score
+
+            # DEBUG TO CATCH COURTS NOT STORED
+            if score == 0:
+                print("Court: " + court + " has 0 score.")
+                
 
         # process tag [arr]
         tags = docMetaData.get("tag", [])
         if not isEmpty(tags):
+            # TODO: PREPROCESS TOKENS first
+            # Compare tokens with every tag in the array, if match, remove tag from array.
+            # count how many tags were removed / total tags --> Proportion to the mod_tag score.
 
         # process areaoflaw [arr]
         areaoflaw = docMetaData.get("areaoflaw", [])
         if not isEmpty(areaoflaw):
+            # TODO: PREPROCESS TOKENS first
+            # Do same things as tags
 
         # Update score
         if extraScore > 0:
