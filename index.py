@@ -8,6 +8,7 @@ from nltk.stem.porter import PorterStemmer
 import sys
 import getopt
 import math
+from datetime import datetime
 from xmlparser import XMLParser
 try:
    import cPickle as pickle
@@ -21,6 +22,7 @@ TUPLE_POS_ARR = 1
 pointerDict = {} # stores the byte pointers for each term's posting array in the collection
 postingDict = {} # stores posting array for each term in collection
 docDict = {} # stores the raw length of each document in the collection
+stemmingDictionary = {} # Cache to quicken stemming
 totalNumOfDocs = 0
 currentDocId = 0
 numberOfDocumentsToRead = 10
@@ -42,10 +44,17 @@ def readFilesInDirectory(directory):
 
     # Go through every file in the given directory
     docIndexed = 0
+
+    start = datetime.now()
+    print "indexing..."
     for filename in listOfDir:
 
         # Retrieve File
         file = os.path.join(directory, filename)
+
+        # Ignore iOS stuffs
+        if filename == ".DS_Store":
+            continue
 
         # Update currentDocId for reference later
         currentDocId = int(filename.split('.')[0])
@@ -59,6 +68,9 @@ def readFilesInDirectory(directory):
         docIndexed += 1
         print '{0}/{1} indexed\r'.format(docIndexed, totalNumOfDocs)
 
+    end = datetime.now()
+    print "Index Complete. Time taken:", (end-start).total_seconds()
+
 # Current Main Method, for testing purposes, only index small portion of library
 def readSomeFilesInDirectory(directory):
     global currentDocId
@@ -68,12 +80,18 @@ def readSomeFilesInDirectory(directory):
     totalNumOfDocs = numberOfDocumentsToRead
     filenameArray = os.listdir(directory)
 
+    start = datetime.now()
+    print "indexing..."
     docIndexed = 0
     for i in range(0, numberOfDocumentsToRead):
 
         # Get filename and file full directory
         filename = filenameArray[i]
         file = os.path.join(directory, filename)
+
+        # Ignore iOS stuffs
+        if filename == ".DS_Store":
+            continue
 
         # Update currentFilename for reference later
         currentDocId = int(filename.split('.')[0])
@@ -88,16 +106,29 @@ def readSomeFilesInDirectory(directory):
     
     # for doc, length in docDict.iteritems():
     # print(doc, length)
-    
+    end = datetime.now()
+    print "Index Complete. Time taken:", (end-start).total_seconds()
 
 def stem_tokens(tokens, stemmer):
+    global stemmingDictionary
+
     result = []
     for token in tokens:
+        # Look for cache
+        cache = stemmingDictionary.get(token, None)
+        if cache is not None:
+            result.append(cache)
+            continue
+        # Else, stem and update cache
         try:
-            result.append(stemmer.stem(token))
+            stem = stemmer.stem(token)
+            result.append(stem)
+            stemmingDictionary[token] = stem
         except:
             print token, "cannot be stemmed"
             result.append(token)
+            stemmingDictionary[token] = token
+
     return result
 
 # Combines tokens for contracted words that were previously
@@ -132,14 +163,31 @@ def indexDoc(file):
     global xmlparser
     global docDict
 
+    start = datetime.now()
     # Parse document using xmlparser
     xmlparser.parseDoc(file)
+
+    # xmlParseTime = datetime.now()
+    # print "xml parsing took:", (xmlParseTime-start).total_seconds()
 
     # --- Prepare doc entry ---
     docDict[currentDocId] = {}
 
-    # --- Index Zones ---
+    # --- Index Content ---
     indexZone("content", xmlparser.contentStr)
+
+    # --- Preprocess Metadata ---
+    tagArr = []
+    for tag in xmlparser.tagArr:
+        processedTag = preprocessText(tag)
+        tagArr.append(processedTag)
+    areaOfLawArr = []
+    for area in xmlparser.areaOfLawArr:
+        processedArea = preprocessText(area)
+        areaOfLawArr.append(processedArea)
+
+    # contentIndexingTime = datetime.now()
+    # print "content indexing took:", (contentIndexingTime-xmlParseTime).total_seconds()
 
     # --- Store document properties ---
     docDict[currentDocId].update({
@@ -148,47 +196,40 @@ def indexDoc(file):
                             "court": xmlparser.court,
                             "domain": xmlparser.domain,
                             "jurisdiction": xmlparser.jurisdictionArr,
-                            "tag": xmlparser.tagArr,
-                            "areaoflaw": xmlparser.areaOfLawArr,
+                            "tag": tagArr,
+                            "areaoflaw": areaOfLawArr,
                             "date": xmlparser.date
                             })
 
-    # print docDict[currentDocId]
     # print "indexed", currentDocId
+    # interationTime = datetime.now()
+    # print "iteration took:", (interationTime-start).total_seconds()
 
 def indexZone(zone, zoneString):
     global docDict
 
-    # Setup stemmer
-    stemmer = PorterStemmer()
+    # start = datetime.now()
+    # print "\n --- Stemming ----"
 
-    # Convert into a single string
-    zoneString.replace('\n', '')
-    zoneString = re.sub(ur"[^\w\d'\s\-]+", '', zoneString)
-    zoneString.replace('/', ' ')
-        
-    # Tokenize string into array of words
-    words = word_tokenize(zoneString)
+    # Preprocess zone string to array of words
+    words = preprocessText(zoneString)
 
-    # Combine contracted words if any
-    words = combine_contracted(words)
-
-    # Stem tokens
-    words = stem_tokens(words, stemmer)
-    
-    # Case Folding
-    caseFoldedArray = []
-    for word in words:
-        caseFoldedArray.append(word.lower())
+    # stemTime = datetime.now()
+    # print "stemming took:", (stemTime-start).total_seconds()
+    # print " --- Indexing ---"
 
     # Index each word
     lengthDict = {}
     pos = 0
-    for word in caseFoldedArray:
+    for word in words:
         indexWord(word, zone, pos)
         pos += 1
         length = lengthDict.get(word, 0)
         lengthDict[word] = length + 1
+
+    # indexTime = datetime.now()
+    # print "indexing took:", (indexTime-stemTime).total_seconds()
+    # print " --- Length Normalisation ---"
 
     # Index content zone length for length normalisation
     if zone == "content":
@@ -199,6 +240,9 @@ def indexZone(zone, zoneString):
         zoneLength = math.sqrt(zoneLength) 
         entry = "contentlength"
         docDict[currentDocId].update({entry: zoneLength})
+
+    # end = datetime.now()
+    # print "normalisation took:", (end-indexTime).total_seconds(), "\n"
 
 def indexWord(word, zone, pos):
     global postingDict
@@ -225,6 +269,37 @@ def indexWord(word, zone, pos):
             postingsList[-1] = existingTuple
             
     postingDict[wordWithZone] = postingsList
+
+# Preprocess Input:
+# + punctuation removal 
+# + tokenization 
+# + stemming 
+# + case folding
+def preprocessText(rawText):
+
+     # Setup stemmer
+    stemmer = PorterStemmer()
+
+    # Convert into a single string
+    rawText.replace('\n', '')
+    rawText = re.sub(ur"[^\w\d'\s\-]+", '', rawText)
+    rawText.replace('/', ' ')
+        
+    # Tokenize string into array of words
+    words = word_tokenize(rawText)
+
+    # Combine contracted words if any
+    words = combine_contracted(words)
+
+    # Stem tokens
+    words = stem_tokens(words, stemmer)
+    
+    # Case Folding
+    caseFoldedArray = []
+    for word in words:
+        caseFoldedArray.append(word.lower())
+
+    return caseFoldedArray
 
 def generateDictionaryAndPostingsFile(dictionary_file, postings_file):
     global pointerDict
