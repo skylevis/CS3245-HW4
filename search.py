@@ -297,18 +297,38 @@ def accumulateExtraScore(tokens, scoreDict):
 
         # process tag [arr]
         tags = docMetaData.get("tag", [])
+        tagsCopied = tags
         if not isEmpty(tags):
-            print "tags"
-            # TODO: PREPROCESS TOKENS first
-            # Compare tokens with every tag in the array, if match, remove tag from array.
-            # count how many tags were removed / total tags --> Proportion to the mod_tag score.
+            
+            # Go through every token, check for a match with the tagsCopied array
+            for token in tokens:
+                for tag in tagsCopied:
+
+                    # If matched, remove this tag from tagsCopied so that this match will not happen again
+                    if token == tag:
+                        tagsCopied.remove(tag)
+
+            # count how many tags were removed / total tags --> Proportion to the mod_tag score
+            numMatches = len(tags) - len(tagsCopied)
+            extraScore += (numMatches / len(tags)) * mod_tag
 
         # process areaoflaw [arr]
         areaoflaw = docMetaData.get("areaoflaw", [])
+        areasCopied = areaoflaw
         if not isEmpty(areaoflaw):
             print "areaoflaw"
-            # TODO: PREPROCESS TOKENS first
-            # Do same things as tags
+            
+            # Go through every token, check for a match with the areasCopied array
+            for token in tokens:
+                for area in areasCopied:
+
+                    # If matched, remove this area from areasCopied so that this match will not happen again
+                    if token == area:
+                        areasCopied.remove(area)
+
+            # count how many elements were removed / total elements --> Proportion to the mod_law score
+            numMatches = len(areaoflaw) - len(areasCopied)
+            extraScore += (numMatches / len(areaoflaw)) * mod_law
 
         # Update score
         if extraScore > 0:
